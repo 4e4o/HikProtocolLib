@@ -1,6 +1,6 @@
 #include "Alarm.hpp"
-#include "Utils.hpp"
-#include "Debug.hpp"
+#include "Misc/Utils.hpp"
+#include "Misc/Debug.hpp"
 
 #include <arpa/inet.h>
 
@@ -15,7 +15,7 @@
 #define MOTION_DETECTION_TYPE       0x3
 
 #define MOTION_DATA_OFFSET          72
-#define MOTION_DATA_SIZE            (MOTION_MAX_CHANNUM_V30 / 8)
+#define MOTION_DATA_SIZE            (AlarmConstants::MOTION_MAX_CHANNUM_V30 / 8)
 
 #define AES_BLOCK_SIZE              16
 

@@ -1,37 +1,44 @@
 #include "Connection.hpp"
 #include "Protocol/Base.hpp"
-#include "Debug.hpp"
+#include "Misc/Debug.hpp"
 
 #include <boost/asio/ip/address.hpp>
 
-#define RECV_BUFFER_SIZE    (64 * 1024)
+#define RECV_BUFFER_SIZE    (2 * 1024)
 #define TIMEOUT_SEC         20
 
 using boost::asio::ip::tcp;
 using boost::asio::ip::address;
 
 Connection::Connection(boost::asio::io_context& io_context)
-    : m_socket(io_context), m_ioContext(io_context),
+    : Timer(io_context, TIMEOUT_SEC),
+      m_socket(io_context),
       m_recvBuffer(RECV_BUFFER_SIZE),
-      m_protocol(nullptr),
-      m_timeout(io_context) {
+      m_protocol(nullptr) {
     debug_print("Connection::Connection %p\n", this);
 }
 
 Connection::~Connection() {
+    if (m_onDestroy) {
+        m_onDestroy();
+    }
+
     close();
-    delete m_protocol;
     debug_print("Connection::~Connection %p\n", this);
 }
 
+void Connection::setOnDestroy(TDestroyCallback c) {
+    m_onDestroy = c;
+}
+
 void Connection::start(BaseProtocol* p, const std::string& ip, int port) {
-    m_protocol = p;
+    m_protocol.reset(p);
     pointer pthis = shared_from_this();
-    startTimeout();
+    startTimer();
     m_socket.async_connect(boost::asio::ip::tcp::endpoint(
                                boost::asio::ip::address::from_string(ip), port),
                            [this, pthis, p] (boost::system::error_code ec) {
-        stopTimeout();
+        stopTimer();
         if (ec || !p->start(this)) {
             onError();
             return;
@@ -62,11 +69,11 @@ void Connection::receive(size_t size, TReceiveCallback c) {
     }
 
     pointer pthis = shared_from_this();
-    startTimeout();
+    startTimer();
     boost::asio::async_read(m_socket, boost::asio::buffer(m_recvBuffer, size),
                             [c, pthis, size](const boost::system::error_code& error,
                             size_t bytes_transferred) {
-        pthis->stopTimeout();
+        pthis->stopTimer();
         if (error || (bytes_transferred != size) || !c(pthis->m_recvBuffer.data())) {
             pthis->onError();
             return;
@@ -94,18 +101,4 @@ void Connection::close() {
 void Connection::onTimeout() {
     debug_print("Connection::onTimeout %p\n", this);
     close();
-}
-
-void Connection::startTimeout() {
-    m_timeout.expires_from_now(boost::posix_time::seconds(TIMEOUT_SEC));
-    m_timeout.async_wait([this](const boost::system::error_code& error) {
-        if (error)
-            return;
-
-        onTimeout();
-    });
-}
-
-void Connection::stopTimeout() {
-    m_timeout.cancel();
 }

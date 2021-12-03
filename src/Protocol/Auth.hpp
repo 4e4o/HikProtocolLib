@@ -9,12 +9,11 @@ typedef struct rsa_st RSA;
 
 class AuthProtocol : public BaseProtocol {
 public:
-    typedef std::function<void(const AuthResult&)> TResultCallback;
-
     AuthProtocol(const std::string& login, const std::string& pass);
     ~AuthProtocol();
 
-    void setResultCallback(TResultCallback);
+    const AuthResult& result() const;
+    bool loggedIn() const;
 
 private:
     bool start(ITransport*) override final;
@@ -45,7 +44,7 @@ private:
     State m_state;
     std::string m_receivedKey;
     std::string m_salt;
-    TResultCallback m_resultCallback;
+    AuthResult m_result;
 };
 
 #endif /* AUTH_PROTOCOL_HPP */

@@ -1,6 +1,6 @@
 #include "Auth.hpp"
-#include "Utils.hpp"
-#include "Debug.hpp"
+#include "Misc/Utils.hpp"
+#include "Misc/Debug.hpp"
 
 #include <arpa/inet.h>
 
@@ -68,12 +68,16 @@ AuthProtocol::~AuthProtocol() {
     debug_print("AuthProtocol::~AuthProtocol %p\n", this);
 }
 
-void AuthProtocol::setResultCallback(TResultCallback c) {
-    m_resultCallback = c;
-}
-
 bool AuthProtocol::start(ITransport* t) {
     return BaseProtocol::start(t) && sendFirstPacket();
+}
+
+const AuthResult& AuthProtocol::result() const {
+    return m_result;
+}
+
+bool AuthProtocol::loggedIn() const {
+    return m_state == State::LOGGED_IN;
 }
 
 bool AuthProtocol::genRSAKeys() {
@@ -251,16 +255,10 @@ bool AuthProtocol::resultPacketHandler(const TCmdDesc& cmd) {
 
     m_state = State::LOGGED_IN;
 
-    if (!m_resultCallback)
-        return false;
+    m_result.key = m_receivedKey;
+    m_result.firstU32 = cmd.firstU32;
+    m_result.secondU32 = readU32(cmd, 12);
 
-    AuthResult result;
-
-    result.key = m_receivedKey;
-    result.firstU32 = cmd.firstU32;
-    result.secondU32 = readU32(cmd, 12);
-
-    m_resultCallback(result);
     return true;
 }
 

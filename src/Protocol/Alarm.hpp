@@ -3,14 +3,13 @@
 
 #include "Base.hpp"
 #include "AuthResult.hpp"
+#include "AlarmConstants.hpp"
 
 typedef struct aes_key_st AES_KEY;
 
 class AlarmProtocol : public BaseProtocol {
 public:
-    static constexpr int MOTION_MAX_CHANNUM_V30 = 64;
-
-    typedef uint8_t TMotion[MOTION_MAX_CHANNUM_V30];
+    typedef uint8_t TMotion[AlarmConstants::MOTION_MAX_CHANNUM_V30];
     typedef std::function<void(const TMotion&, const size_t&)> TMotionCallback;
 
     AlarmProtocol(const AuthResult&);

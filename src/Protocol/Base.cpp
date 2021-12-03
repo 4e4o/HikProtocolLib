@@ -1,6 +1,6 @@
 #include "Base.hpp"
 #include "ITransport.hpp"
-#include "Debug.hpp"
+#include "Misc/Debug.hpp"
 
 #include <arpa/inet.h>
 
