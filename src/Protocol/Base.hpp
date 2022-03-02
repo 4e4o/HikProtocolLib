@@ -21,7 +21,7 @@ public:
 
     struct TCmdDesc {
         uint32_t firstU32;
-        std::span<uint8_t> data;
+        std::span<const uint8_t> data;
     };
 
 protected:

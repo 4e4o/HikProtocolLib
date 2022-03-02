@@ -1,39 +1,50 @@
 #include "ServerConfig.hpp"
-#include "Config.hpp"
 #include "ChannelConfig.hpp"
 
 #include <boost/json.hpp>
 
-ServerConfig::ServerConfig(Config* config, const boost::json::object &o) {
-    m_ip = toStdString(o.at("ip").as_string());
-    m_port = o.at("port").as_int64();
-    m_login = toStdString(o.at("login").as_string());
-    m_pass = toStdString(o.at("pass").as_string());
+ServerConfig::ServerConfig(const boost::json::object &o) :
+    m_ip(get<std::string>(o, "ip")),
+    m_port(get<std::int64_t>(o, "port")),
+    m_login(get<std::string>(o, "login")),
+    m_pass(get<std::string>(o, "pass")),
+    m_comment(get<std::string, true>(o, "comment")) {
+    registerType<ConfigItem, ChannelConfig, const boost::json::object&>();
+}
 
-    if (o.contains("comment"))
-        m_comment = toStdString(o.at("comment").as_string());
-
-    for (size_t i = 0 ; i < AlarmConstants::MOTION_MAX_CHANNUM_V30 ; i++) {
-        const std::string input = "{\"id\":" + std::to_string(i) + "}";
-        const auto obj = boost::json::parse(input).as_object();
-        m_channels[i].reset(config->create<ChannelConfig>(obj));
-    }
-
+void ServerConfig::init(const boost::json::object &o) {
     if (!o.contains("channels"))
         return;
 
     const auto& channels = o.at("channels");
 
-    for (const auto& channel : channels.as_array()) {
-        const boost::json::object& obj = channel.as_object();
+    ArrayParser::TItems itms;
+    parseArray(channels.as_array(), itms);
 
-        if (!ConfigItem::isEnabled(obj))
-            continue;
+    bool enableAll = false;
 
-        std::unique_ptr<ChannelConfig> channel_desc(config->create<ChannelConfig>(obj));
+    for (auto& c : itms) {
+        ChannelConfig* cc = static_cast<ChannelConfig*>(c.get());
 
-        if (channel_desc->getId() < AlarmConstants::MOTION_MAX_CHANNUM_V30)
-            m_channels[channel_desc->getId()].reset(channel_desc.release());
+        if (cc->getComment() == "enable all")
+            enableAll = true;
+
+        if (cc->getId() < AlarmConstants::MOTION_MAX_CHANNUM_V30) {
+            m_channels[cc->getId()].reset(cc);
+            c.release();
+        }
+    }
+
+    if (enableAll) {
+        for (size_t i = 0 ; i < AlarmConstants::MOTION_MAX_CHANNUM_V30 ; i++) {
+            if (m_channels[i].get() != nullptr)
+                continue;
+
+            const std::string input = "{\"id\":" + std::to_string(i) + "}";
+            const auto obj = boost::json::parse(input).as_object();
+            ChannelConfig* cc = static_cast<ChannelConfig*>(create<ConfigItem>(obj));
+            m_channels[i].reset(cc);
+        }
     }
 }
 

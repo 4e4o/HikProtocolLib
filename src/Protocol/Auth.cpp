@@ -1,6 +1,7 @@
 #include "Auth.hpp"
 #include "Misc/Utils.hpp"
-#include "Misc/Debug.hpp"
+
+#include <Misc/Debug.hpp>
 
 #include <arpa/inet.h>
 
@@ -51,7 +52,7 @@ AuthProtocol::AuthProtocol(const std::string& login, const std::string& pass)
       m_rsa(nullptr),
       m_pubKey(RSA_1024_F4_PUBKEY_SIZE),
       m_state(State::SEND_RSA_PUB_KEY) {
-    debug_print("AuthProtocol::AuthProtocol %p\n", this);
+    debug_print(boost::format("AuthProtocol::AuthProtocol %1%") % this);
 }
 
 AuthProtocol::~AuthProtocol() {
@@ -65,7 +66,7 @@ AuthProtocol::~AuthProtocol() {
         m_bn = nullptr;
     }
 
-    debug_print("AuthProtocol::~AuthProtocol %p\n", this);
+    debug_print(boost::format("AuthProtocol::~AuthProtocol %1%") % this);
 }
 
 bool AuthProtocol::start(ITransport* t) {
@@ -156,7 +157,7 @@ bool AuthProtocol::genSecondPacket(TData& d) {
 bool AuthProtocol::sendSecondPacket() {
     m_state = State::SEND_HMAC;
 
-    debug_print("AuthProtocol %p, decrypted key: %s\n", this, m_receivedKey.c_str());
+    debug_print(boost::format("AuthProtocol %1%, decrypted key: %2%") % this % m_receivedKey.c_str());
 
     TData d;
 
@@ -171,7 +172,7 @@ bool AuthProtocol::decryptKeyRSA(const TCmdDesc& cmd) {
     if (cmd.data.size() < (CRYPTED_KEY_PACKET_HEADER_SIZE + RSA_CRYPTED_KEY_LENGTH))
         return false;
 
-    uint8_t *crypted_data = cmd.data.data() + CRYPTED_KEY_PACKET_HEADER_SIZE;
+    const uint8_t *crypted_data = cmd.data.data() + CRYPTED_KEY_PACKET_HEADER_SIZE;
     TData crypted(crypted_data, crypted_data + RSA_CRYPTED_KEY_LENGTH);
     TData result(crypted.size());
     const int len = RSA_private_decrypt(crypted.size(), crypted.data(), result.data(), m_rsa, RSA_PKCS1_PADDING);
@@ -185,7 +186,7 @@ bool AuthProtocol::decryptKeyRSA(const TCmdDesc& cmd) {
     const size_t salt_length = cmd.data.size() - CRYPTED_KEY_PACKET_HEADER_SIZE - RSA_CRYPTED_KEY_LENGTH;
 
     if (salt_length > 0) {
-        uint8_t *salt_begin = cmd.data.data() + CRYPTED_KEY_PACKET_HEADER_SIZE + RSA_CRYPTED_KEY_LENGTH;
+        const uint8_t *salt_begin = cmd.data.data() + CRYPTED_KEY_PACKET_HEADER_SIZE + RSA_CRYPTED_KEY_LENGTH;
         m_salt = std::string(salt_begin, salt_begin + salt_length);
     }
 
@@ -198,9 +199,9 @@ bool AuthProtocol::decryptKeyBase64(const TCmdDesc& cmd) {
     if (crypted_data_length < 1)
         return false;
 
-    uint8_t *begin = cmd.data.data() + CRYPTED_KEY_PACKET_HEADER_SIZE;
-    uint8_t *end = begin + crypted_data_length;
-    uint8_t* zero_pos = std::find(begin, end, 0);
+    const uint8_t *begin = cmd.data.data() + CRYPTED_KEY_PACKET_HEADER_SIZE;
+    const uint8_t *end = begin + crypted_data_length;
+    const uint8_t* zero_pos = std::find(begin, end, 0);
 
     if (zero_pos == end)
         return false;
@@ -238,7 +239,7 @@ bool AuthProtocol::keyPacketHandler(const TCmdDesc& cmd) {
         keyDecrypted = decryptKeyBase64(cmd);
         break;
     default: {
-        debug_print("AuthProtocol %p, Unimplemented key packet\n", this);
+        debug_print(boost::format("AuthProtocol %1%, Unimplemented key packet") % this);
         return false;
     }
     }

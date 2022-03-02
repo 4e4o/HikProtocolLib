@@ -1,6 +1,7 @@
 #include "Alarm.hpp"
 #include "Misc/Utils.hpp"
-#include "Misc/Debug.hpp"
+
+#include <Misc/Debug.hpp>
 
 #include <arpa/inet.h>
 
@@ -46,7 +47,7 @@ static constexpr uint8_t g_checksumKey[] = { 0x82, 0x64, 0x49, 0x01,
 AlarmProtocol::AlarmProtocol(const AuthResult& a)
     : m_aesKey(nullptr),
       m_auth(a) {
-    debug_print("AlarmProtocol::AlarmProtocol %p\n", this);
+    debug_print(boost::format("AlarmProtocol::AlarmProtocol %1%") % this);
 }
 
 AlarmProtocol::~AlarmProtocol() {
@@ -55,7 +56,7 @@ AlarmProtocol::~AlarmProtocol() {
         m_aesKey = nullptr;
     }
 
-    debug_print("AlarmProtocol::~AlarmProtocol %p\n", this);
+    debug_print(boost::format("AlarmProtocol::~AlarmProtocol %1%") % this);
 }
 
 bool AlarmProtocol::start(ITransport* t) {
@@ -70,7 +71,7 @@ bool AlarmProtocol::initAes128() {
     const std::string key = m_auth.key.substr(0, AES_BLOCK_SIZE);
     m_aesKey = new AES_KEY();
     AES_set_encrypt_key((const unsigned char *) key.data(), AES_BLOCK_SIZE * 8, m_aesKey);
-    debug_print("AlarmProtocol::initAes128 %p, key: %s\n", this, key.c_str());
+    debug_print(boost::format("AlarmProtocol::initAes128 %1%, key: %2%") % this % key.c_str());
     return true;
 }
 
@@ -96,7 +97,7 @@ uint32_t AlarmProtocol::encChecksum() {
     const uint32_t unknown_base = m_auth.secondU32 - MAGIC_CONST_1;
     uint32_t sum = m_auth.firstU32 + 2 * MAGIC_CONST_2;
 
-    debug_print("AlarmProtocol::encChecksum %p, unknown_base = %u\n", this, unknown_base);
+    debug_print(boost::format("AlarmProtocol::encChecksum %1%, unknown_base = %2%") % this % unknown_base);
 
     for (int i = 0, shift = 0; i < 6 ; i++, shift += 5) {
         sum += g_checksumKey[i] & (m_auth.secondU32 >> shift);
@@ -140,7 +141,7 @@ bool AlarmProtocol::sendAlarmSubscribe() {
 }
 
 bool AlarmProtocol::pingHandler(const TCmdDesc&) {
-    // debug_print("AlarmProtocol::pingHandler %p, %i\n", this, cmd.data.size());
+    //debug_print(boost::format("AlarmProtocol::pingHandler %1%, %2%") % this % cmd.data.size());
     return true;
 }
 
@@ -177,7 +178,7 @@ bool AlarmProtocol::alarmHandler(const TCmdDesc& cmd) {
 }
 
 bool AlarmProtocol::onCmd(const TCmdDesc& cmd) {
-    // debug_print("AlarmProtocol::onCmd %p, %i\n", this, cmd.data.size());
+    //debug_print(boost::format("AlarmProtocol::onCmd %1%, %2%") % this % cmd.data.size());
     bool handlerResult = true;
 
     switch(cmd.firstU32) {

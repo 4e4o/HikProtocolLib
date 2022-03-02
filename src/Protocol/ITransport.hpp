@@ -10,7 +10,7 @@ class ITransport {
 public:
     typedef std::vector<uint8_t> TData;
     typedef std::function<void()> TSendCallback;
-    typedef std::function<bool(uint8_t*)> TReceiveCallback;
+    typedef std::function<bool(const uint8_t*)> TReceiveCallback;
 
     virtual ~ITransport() { }
 

@@ -1,6 +1,7 @@
 #include "Base.hpp"
 #include "ITransport.hpp"
-#include "Misc/Debug.hpp"
+
+#include <Misc/Debug.hpp>
 
 #include <arpa/inet.h>
 
@@ -9,11 +10,11 @@
 
 BaseProtocol::BaseProtocol()
     : m_transport(nullptr) {
-    //    debug_print("BaseProtocol::BaseProtocol %p\n", this);
+    //debug_print(boost::format("BaseProtocol::BaseProtocol %1%") % this);
 }
 
 BaseProtocol::~BaseProtocol() {
-    //    debug_print("BaseProtocol::~BaseProtocol %p\n", this);
+    //debug_print(boost::format("BaseProtocol::~BaseProtocol %1%") % this);
 }
 
 bool BaseProtocol::start(ITransport* t) {
@@ -31,7 +32,7 @@ void BaseProtocol::sendCmd(const TData& d, TSendCallback c) {
 
 void BaseProtocol::readCmd() {
     // read 4 byte cmd length
-    m_transport->receive(sizeof(uint32_t), [this](uint8_t* data) -> bool {
+    m_transport->receive(sizeof(uint32_t), [this](const uint8_t* data) -> bool {
         uint32_t size = ntohl(*((uint32_t*) data));
 
         if (size <= sizeof(size))
@@ -42,7 +43,7 @@ void BaseProtocol::readCmd() {
         if (size < 4)
             return false;
 
-        m_transport->receive(size, [this, size](uint8_t* data) -> bool {
+        m_transport->receive(size, [this, size](const uint8_t* data) -> bool {
             const uint32_t first = ntohl(*((uint32_t*) data));
 
             if (first == 0)

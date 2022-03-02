@@ -2,11 +2,9 @@
 
 #include <boost/json.hpp>
 
-ChannelConfig::ChannelConfig(const boost::json::object &o) {
-    m_id = o.at("id").as_int64();
-
-    if (o.contains("comment"))
-        m_comment = toStdString(o.at("comment").as_string());
+ChannelConfig::ChannelConfig(const boost::json::object &o)
+    : m_id(get<std::int64_t>(o, "id")),
+      m_comment(get<std::string, true>(o, "comment")) {
 }
 
 uint8_t ChannelConfig::getId() const {

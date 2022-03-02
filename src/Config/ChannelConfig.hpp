@@ -1,7 +1,7 @@
 #ifndef CHANNEL_CONFIG_HPP
 #define CHANNEL_CONFIG_HPP
 
-#include "ConfigItem.hpp"
+#include <Config/ConfigItem.hpp>
 
 #include <string>
 
@@ -13,8 +13,8 @@ public:
     const std::string& getComment() const;
 
 private:
-    uint8_t m_id;
-    std::string m_comment;
+    const uint8_t m_id;
+    const std::string m_comment;
 };
 
 #endif /* CHANNEL_CONFIG_HPP */
