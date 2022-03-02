@@ -13,11 +13,10 @@ public:
 
 protected:
     virtual void onNewClient(AlarmClient*);
+    bool start(TConfigItems&) override;
+    void doExit() override;
 
 private:
-    bool start(TConfigItems&) override final;
-    void doExit() override final;
-
     boost::signals2::signal<void()> m_close;
 };
 
