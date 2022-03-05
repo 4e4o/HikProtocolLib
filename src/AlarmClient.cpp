@@ -122,7 +122,7 @@ void AlarmClient::runAlarmImpl(const AuthResult& auth) {
             self->motionHandler(md, size);
         });
         session->setProtocol(p);
-        session->onDestroy.connect([self]() {
+        session->onDestroy.connect([self](bool) {
             self->restart();
         });
     });
