@@ -22,8 +22,7 @@ void ProtocolSession::startImpl() {
 }
 
 void ProtocolSession::send(const TData& data, TSendCallback c) {
-    auto self = shared_from_this();
-    onWriteDone.connect_extended([self, c](const connection& con) {
+    onWriteDone.connect_extended([c](const connection& con) {
         con.disconnect();
         c();
     });
@@ -31,8 +30,7 @@ void ProtocolSession::send(const TData& data, TSendCallback c) {
 }
 
 void ProtocolSession::receive(size_t s, TReceiveCallback c) {
-    auto self = shared_from_this();
-    onData.connect_extended([self, c](const connection& con, const uint8_t *ptr, std::size_t) {
+    onData.connect_extended([c](const connection& con, const uint8_t *ptr, std::size_t) {
         con.disconnect();
         c(ptr);
     });

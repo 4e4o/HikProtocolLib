@@ -12,14 +12,16 @@ ServerConfig::ServerConfig(const boost::json::object &o) :
     registerType<ConfigItem, ChannelConfig, const boost::json::object&>();
 }
 
-void ServerConfig::init(const boost::json::object &o) {
+bool ServerConfig::init(const boost::json::object &o) {
     if (!o.contains("channels"))
-        return;
+        return true;
 
     const auto& channels = o.at("channels");
 
     ArrayParser::TItems itms;
-    parseArray(channels.as_array(), itms);
+
+    if (!parseArray(channels.as_array(), itms))
+        return false;
 
     bool enableAll = false;
 
@@ -46,6 +48,8 @@ void ServerConfig::init(const boost::json::object &o) {
             m_channels[i].reset(cc);
         }
     }
+
+    return true;
 }
 
 const std::string& ServerConfig::getIp() const {

@@ -25,7 +25,7 @@ public:
     const std::string& getComment() const;
 
 private:
-    void init(const boost::json::object&) override final;
+    bool init(const boost::json::object&) override final;
 
     const std::string m_ip;
     const int m_port;
