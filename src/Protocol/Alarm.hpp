@@ -18,15 +18,14 @@ public:
     void setMotionCallback(const TMotionCallback&);
 
 private:
-    bool start(ITransport*) override final;
-    bool onCmd(const TCmdDesc&) override final;
-    bool pingHandler(const TCmdDesc&);
-    bool alarmHandler(const TCmdDesc&);
-
-    bool initAes128();
-    bool sendAlarmSubscribe();
+    TAwaitVoid start(ITransport*) override final;
+    void pingHandler(const TCmdDesc&);
+    void alarmHandler(const TCmdDesc&);
+    void initAes128();
+    TAwaitVoid sendAlarmSubscribe();
     uint32_t encChecksum();
     bool aes128Enc(const TData&, TData& d, int rounds = 10);
+    void cmdHandler(const TCmdDesc& cmd);
 
     AES_KEY* m_aesKey;
     const AuthResult m_auth;

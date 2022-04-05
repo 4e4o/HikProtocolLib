@@ -3,13 +3,12 @@
 
 #include "Config/ServerConfig.hpp"
 
+#include <Misc/Lifecycle.hpp>
 #include <Config/Config.hpp>
 #include <Misc/Debug.hpp>
 
-#define PROG_NAME   "hikvision alarm application"
-
 HikAlarmApplication::HikAlarmApplication(int argc, char* argv[])
-    : BaseConfigApplication(PROG_NAME, argc, argv) {
+    : BaseConfigApplication(argc, argv) {
     config()->registerType<ConfigItem, ServerConfig, const boost::json::object&>();
 }
 
@@ -28,10 +27,7 @@ bool HikAlarmApplication::start(TConfigItems &hik_servers) {
         ServerConfig * sc = static_cast<ServerConfig*>(config.release());
         std::shared_ptr<AlarmClient> client(new AlarmClient(io(), sc));
         onNewClient(client.get());
-        m_close.connect_extended([client](const boost::signals2::connection& con) {
-            con.disconnect();
-            client->stop();
-        });
+        Lifecycle::connectTrack(m_close, client, &AlarmClient::stop);
         client->start();
     }
 

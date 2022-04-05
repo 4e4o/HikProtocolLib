@@ -2,20 +2,19 @@
 #define ITRANSPORT_HPP
 
 #include <vector>
-#include <functional>
 
-#include <cstdint>
+#include <Coroutine/Awaitables.hpp>
+
+typedef boost::asio::awaitable<const uint8_t*> TAwaitData;
 
 class ITransport {
 public:
-    typedef std::vector<uint8_t> TData;
-    typedef std::function<void()> TSendCallback;
-    typedef std::function<bool(const uint8_t*)> TReceiveCallback;
-
     virtual ~ITransport() { }
 
-    virtual void send(const TData& data, TSendCallback c) = 0;
-    virtual void receive(size_t, TReceiveCallback c) = 0;
+    typedef std::vector<uint8_t> TData;
+
+    virtual TAwaitSize send(const TData& data) = 0;
+    virtual TAwaitData receive(size_t) = 0;
 };
 
 #endif /* ITRANSPORT_HPP */

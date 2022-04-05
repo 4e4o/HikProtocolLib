@@ -13,22 +13,20 @@ public:
     ~AuthProtocol();
 
     const AuthResult& result() const;
-    bool loggedIn() const;
 
 private:
-    bool start(ITransport*) override final;
-    bool onCmd(const TCmdDesc&) override final;
+    TAwaitVoid start(ITransport*) override final;
 
     bool genRSAKeys();
-    bool sendFirstPacket();
-    bool sendSecondPacket();
+    TAwaitVoid sendFirstPacket();
+    TAwaitVoid sendSecondPacket();
     void genFirstPacket(TData& d);
     bool genSecondPacket(TData& d);
     bool decryptKeyRSA(const TCmdDesc&);
     bool decryptKeyBase64(const TCmdDesc&);
     std::string hmac(const std::string&);
-    bool keyPacketHandler(const TCmdDesc&);
-    bool resultPacketHandler(const TCmdDesc&);
+    void keyPacketHandler(const TCmdDesc&);
+    void resultPacketHandler(const TCmdDesc&);
 
     enum class State {
         SEND_RSA_PUB_KEY,
@@ -41,7 +39,6 @@ private:
     BIGNUM *m_bn;
     RSA *m_rsa;
     TData m_pubKey;
-    State m_state;
     std::string m_receivedKey;
     std::string m_salt;
     AuthResult m_result;

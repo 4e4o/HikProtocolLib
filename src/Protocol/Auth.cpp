@@ -3,11 +3,6 @@
 
 #include <Misc/Debug.hpp>
 
-#include <arpa/inet.h>
-
-#include <string>
-#include <string.h>
-
 #include <openssl/rsa.h>
 #include <openssl/hmac.h>
 
@@ -50,9 +45,8 @@ AuthProtocol::AuthProtocol(const std::string& login, const std::string& pass)
       m_pass(pass),
       m_bn(nullptr),
       m_rsa(nullptr),
-      m_pubKey(RSA_1024_F4_PUBKEY_SIZE),
-      m_state(State::SEND_RSA_PUB_KEY) {
-    debug_print(boost::format("AuthProtocol::AuthProtocol %1%") % this);
+      m_pubKey(RSA_1024_F4_PUBKEY_SIZE) {
+    debug_print_this("");
 }
 
 AuthProtocol::~AuthProtocol() {
@@ -66,19 +60,20 @@ AuthProtocol::~AuthProtocol() {
         m_bn = nullptr;
     }
 
-    debug_print(boost::format("AuthProtocol::~AuthProtocol %1%") % this);
+    debug_print_this("");
 }
 
-bool AuthProtocol::start(ITransport* t) {
-    return BaseProtocol::start(t) && sendFirstPacket();
+TAwaitVoid AuthProtocol::start(ITransport* t) {
+    co_await BaseProtocol::start(t);
+    co_await sendFirstPacket();
+    keyPacketHandler(co_await readCmd());
+    co_await sendSecondPacket();
+    resultPacketHandler(co_await readCmd());
+    co_return;
 }
 
 const AuthResult& AuthProtocol::result() const {
     return m_result;
-}
-
-bool AuthProtocol::loggedIn() const {
-    return m_state == State::LOGGED_IN;
 }
 
 bool AuthProtocol::genRSAKeys() {
@@ -103,14 +98,14 @@ bool AuthProtocol::genRSAKeys() {
     return true;
 }
 
-bool AuthProtocol::sendFirstPacket() {
+TAwaitVoid AuthProtocol::sendFirstPacket() {
     if (!genRSAKeys())
-        return false;
+        throw std::runtime_error("genRSAKeys failed");
 
     TData d;
     genFirstPacket(d);
-    sendCmd(d, [this]() { readCmd(); });
-    return true;
+    co_await sendCmd(d);
+    co_return;
 }
 
 void AuthProtocol::genFirstPacket(TData& d) {
@@ -154,18 +149,15 @@ bool AuthProtocol::genSecondPacket(TData& d) {
     return true;
 }
 
-bool AuthProtocol::sendSecondPacket() {
-    m_state = State::SEND_HMAC;
-
-    debug_print(boost::format("AuthProtocol %1%, decrypted key: %2%") % this % m_receivedKey.c_str());
-
+TAwaitVoid AuthProtocol::sendSecondPacket() {
+    debug_print_this(fmt("decrypted key: %1%") % m_receivedKey.c_str());
     TData d;
 
     if (!genSecondPacket(d))
-        return false;
+        throw std::runtime_error("genSecondPacket failed");
 
-    sendCmd(d, [this]() { readCmd(); });
-    return true;
+    co_await sendCmd(d);
+    co_return;
 }
 
 bool AuthProtocol::decryptKeyRSA(const TCmdDesc& cmd) {
@@ -223,9 +215,9 @@ bool AuthProtocol::decryptKeyBase64(const TCmdDesc& cmd) {
 
 //  TODO 47
 
-bool AuthProtocol::keyPacketHandler(const TCmdDesc& cmd) {
+void AuthProtocol::keyPacketHandler(const TCmdDesc& cmd) {
     if (cmd.data.size() < CRYPTED_KEY_PACKET_HEADER_SIZE)
-        return false;
+        throw std::runtime_error("invalid key packet header size");
 
     const uint32_t packetType = readU32(cmd, 4);
     bool keyDecrypted = false;
@@ -239,35 +231,19 @@ bool AuthProtocol::keyPacketHandler(const TCmdDesc& cmd) {
         keyDecrypted = decryptKeyBase64(cmd);
         break;
     default: {
-        debug_print(boost::format("AuthProtocol %1%, Unimplemented key packet") % this);
-        return false;
+        throw std::runtime_error("Unimplemented key packet");
     }
     }
 
     if (!keyDecrypted)
-        return false;
-
-    return sendSecondPacket();
+        throw std::runtime_error("Key not decrypted");
 }
 
-bool AuthProtocol::resultPacketHandler(const TCmdDesc& cmd) {
+void AuthProtocol::resultPacketHandler(const TCmdDesc& cmd) {
     if (cmd.data.size() < 16)
-        return false;
-
-    m_state = State::LOGGED_IN;
+        throw std::runtime_error("Result packet invalid data length");
 
     m_result.key = m_receivedKey;
     m_result.firstU32 = cmd.firstU32;
     m_result.secondU32 = readU32(cmd, 12);
-
-    return true;
-}
-
-bool AuthProtocol::onCmd(const TCmdDesc& cmd) {
-    if (m_state == State::SEND_RSA_PUB_KEY)
-        return keyPacketHandler(cmd);
-    else if (m_state == State::SEND_HMAC)
-        return resultPacketHandler(cmd);
-
-    return false;
 }

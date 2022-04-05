@@ -6,29 +6,25 @@
 #include "Config/ServerConfig.hpp"
 #include "Config/ChannelConfig.hpp"
 
-#include <Network/ClientManager.hpp>
+#include <Network/Client.hpp>
 #include <Misc/Debug.hpp>
 
-#define RECONNECT_SEC           10
-#define RECV_TIMEOUT_SEC        20
-#define AUTH_RECV_TIMEOUT_SEC   10
+using namespace std::literals::chrono_literals;
 
-using boost::signals2::connection;
+#define AUTH_TIMEOUT    13s
+#define RETRY_TIMEOUT   10s
+
+using namespace boost::asio;
+using namespace boost::system;
 
 AlarmClient::AlarmClient(boost::asio::io_context& io, const ServerConfig *c)
-    : Timer(io, RECONNECT_SEC),
-      m_stopped(false),
+    : CoroutineTask(io),
       m_config(c) {
-    onTimeout.connect([this] (Timer*) {
-        debug_print(boost::format("AlarmClient::onTimeout %1%") % this);
-        start();
-    });
-
-    debug_print(boost::format("AlarmClient::AlarmClient %1%") % this);
+    debug_print_this("");
 }
 
 AlarmClient::~AlarmClient() {
-    debug_print(boost::format("AlarmClient::~AlarmClient %1%") % this);
+    debug_print_this("");
 }
 
 const ServerConfig* AlarmClient::config() const {
@@ -46,7 +42,7 @@ void AlarmClient::motionHandler(const AlarmProtocol::TMotion& md, const size_t& 
         if (m_motionChannels[j] == nullptr) {
             const std::string server = config()->getComment().empty() ?
                         config()->getIp() : config()->getComment();
-            debug_print(boost::format("disabled channel %1% md on %2% ") % (int)md[i] % server);
+            debug_print_this(fmt("disabled channel %1% md on %2%") % (int)md[i] % server);
         } else {
             j++;
         }
@@ -57,85 +53,46 @@ void AlarmClient::motionHandler(const AlarmProtocol::TMotion& md, const size_t& 
     }
 }
 
-std::shared_ptr<ClientManager> AlarmClient::createClient() {
-    std::shared_ptr<ClientManager> client(new ClientManager(io()));
-    client->setStrand(this, false);
-    client->registerType<Session, ProtocolSession, boost::asio::io_context&>();
-    m_stopClients.connect(decltype(m_stopClients)::slot_type(
-                              &ClientManager::stop, client.get()).track_foreign(client));
-    return client;
+AlarmClient::TProtocolAwait AlarmClient::getProtocolSession() {
+    TClient client(new Client(io()));
+    client->setStrand(this);
+    client->registerType<Session, ProtocolSession, Socket*>();
+    registerStop(client);
+    TSession s = co_await client->co_start(use_awaitable, m_config->getIp(), m_config->getPort());
+    s->setStrand(this);
+    co_return std::static_pointer_cast<ProtocolSession>(s);
 }
 
-void AlarmClient::start() {
-    auto self = shared_from_this();
-    post([self] {
-        self->startImpl();
+AlarmClient::TAuthAwait AlarmClient::authorize() {
+    auto session = co_await getProtocolSession();
+    AuthProtocol* p = new AuthProtocol(m_config->getLogin(), m_config->getPass());
+    session->setProtocol(p);
+    co_await session->co_start(use_awaitable);
+    co_return p->result();
+}
+
+TAwaitVoid AlarmClient::runAlarm(const AuthResult& auth) {
+    auto session = co_await getProtocolSession();
+    AlarmProtocol *p = new AlarmProtocol(auth);
+    p->setMotionCallback([this](const AlarmProtocol::TMotion& md, const size_t& size) {
+        motionHandler(md, size);
     });
+    session->setProtocol(p);
+    co_await session->co_start(use_awaitable);
+    co_return;
 }
 
-void AlarmClient::stop() {
-    auto self = shared_from_this();
-    post([self] {
-        if (self->m_stopped)
-            return;
-
-        self->m_stopped = true;
-        self->m_stopClients();
-    });
-}
-
-void AlarmClient::startImpl() {
-    auto self = shared_from_this();
-    auto client = createClient();
-    client->onNewSession.connect([self](Session *s) {
-        s->setReceiveTimeout(AUTH_RECV_TIMEOUT_SEC);
-        ProtocolSession *session = static_cast<ProtocolSession*>(s);
-        AuthProtocol* p = new AuthProtocol(self->m_config->getLogin(), self->m_config->getPass());
-        session->setProtocol(p);
-        session->onProtocolDone.connect([self, p]() {
-            if (p->loggedIn()) {
-                self->runAlarm(p->result());
-            } else {
-                self->restart();
+TAwaitVoid AlarmClient::run() {
+    while(running()) {
+        try {
+            auto authResult = co_await timeout(authorize(), AUTH_TIMEOUT);
+            co_await runAlarm(authResult);
+        } catch(const system_error& e) {
+            if (e.code() == errc::operation_canceled) {
+                throw;
             }
-        });
-    });
+        } catch(...) { }
 
-    client->start(m_config->getIp(), m_config->getPort());
-}
-
-void AlarmClient::runAlarm(const AuthResult& auth) {
-    auto self = shared_from_this();
-    post([self, auth] {
-        self->runAlarmImpl(auth);
-    });
-}
-
-void AlarmClient::runAlarmImpl(const AuthResult& auth) {
-    auto self = shared_from_this();
-    auto client = createClient();
-    client->onNewSession.connect([self, auth](Session *s) {
-        s->setReceiveTimeout(RECV_TIMEOUT_SEC);
-        ProtocolSession *session = static_cast<ProtocolSession*>(s);
-        AlarmProtocol *p = new AlarmProtocol(auth);
-        p->setMotionCallback([self](const AlarmProtocol::TMotion& md, const size_t& size) {
-            self->motionHandler(md, size);
-        });
-        session->setProtocol(p);
-        session->onDestroy.connect([self](bool) {
-            self->restart();
-        });
-    });
-
-    client->start(m_config->getIp(), m_config->getPort());
-}
-
-void AlarmClient::restart() {
-    auto self = shared_from_this();
-    post([self] {
-        if (self->m_stopped)
-            return;
-
-        self->startTimer();
-    });
+        co_await wait(RETRY_TIMEOUT);
+    }
 }

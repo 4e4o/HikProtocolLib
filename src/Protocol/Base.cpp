@@ -1,60 +1,57 @@
 #include "Base.hpp"
-#include "ITransport.hpp"
 
 #include <Misc/Debug.hpp>
 
 #include <arpa/inet.h>
 
 #include <string>
-#include <string.h>
+
+#define MINIMAL_CMD_LENGTH 4
 
 BaseProtocol::BaseProtocol()
     : m_transport(nullptr) {
-    //debug_print(boost::format("BaseProtocol::BaseProtocol %1%") % this);
+    //debug_print_this("");
 }
 
 BaseProtocol::~BaseProtocol() {
-    //debug_print(boost::format("BaseProtocol::~BaseProtocol %1%") % this);
+    //debug_print_this("");
 }
 
-bool BaseProtocol::start(ITransport* t) {
+TAwaitVoid BaseProtocol::start(ITransport* t) {
     m_transport = t;
-    return true;
+    co_return;
 }
 
-void BaseProtocol::sendCmd(const TData& d, TSendCallback c) {
+TAwaitSize BaseProtocol::sendCmd(const ITransport::TData& d) {
     TData cmd(sizeof(TCmdSize) + d.size());
     TCmdSize* sizePtr = (TCmdSize*) cmd.data();
     *sizePtr = htonl(cmd.size());
     memcpy(cmd.data() + sizeof(TCmdSize), d.data(), d.size());
-    m_transport->send(cmd, c);
+    return m_transport->send(cmd);
 }
 
-void BaseProtocol::readCmd() {
+BaseProtocol::TAwaitCmd BaseProtocol::readCmd() {
     // read 4 byte cmd length
-    m_transport->receive(sizeof(uint32_t), [this](const uint8_t* data) -> bool {
-        uint32_t size = ntohl(*((uint32_t*) data));
+    const uint8_t* cmdLength = co_await m_transport->receive(4);
+    uint32_t size = ntohl(*((uint32_t*) cmdLength));
 
-        if (size <= sizeof(size))
-            return false;
+    // size must be > (sizeof(size) + body_length)
+    if (size <= sizeof(size))
+        throw std::runtime_error("invalid cmd length");
 
-        size -= sizeof(size);
+    size -= sizeof(size);
 
-        if (size < 4)
-            return false;
+    if (size < MINIMAL_CMD_LENGTH)
+        throw std::runtime_error("invalid cmd length");
 
-        m_transport->receive(size, [this, size](const uint8_t* data) -> bool {
-            const uint32_t first = ntohl(*((uint32_t*) data));
+    const uint8_t* body = co_await m_transport->receive(size);
+    const uint32_t first = ntohl(*((uint32_t*) body));
 
-            if (first == 0)
-                return false;
+    // i think it is error indicator
+    if (first == 0)
+        throw std::runtime_error("cmd body first == 0");
 
-            TCmdDesc desc{.firstU32 = first, .data{data, size}};
-            return onCmd(desc);
-        });
-
-        return true;
-    });
+    co_return TCmdDesc{.firstU32 = first, .data{body, size}};
 }
 
 uint32_t BaseProtocol::readU32(const TCmdDesc& cmd, int offset) {

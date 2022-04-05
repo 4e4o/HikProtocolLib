@@ -47,7 +47,7 @@ static constexpr uint8_t g_checksumKey[] = { 0x82, 0x64, 0x49, 0x01,
 AlarmProtocol::AlarmProtocol(const AuthResult& a)
     : m_aesKey(nullptr),
       m_auth(a) {
-    debug_print(boost::format("AlarmProtocol::AlarmProtocol %1%") % this);
+    debug_print_this("");
 }
 
 AlarmProtocol::~AlarmProtocol() {
@@ -56,23 +56,28 @@ AlarmProtocol::~AlarmProtocol() {
         m_aesKey = nullptr;
     }
 
-    debug_print(boost::format("AlarmProtocol::~AlarmProtocol %1%") % this);
+    debug_print_this("");
 }
 
-bool AlarmProtocol::start(ITransport* t) {
-    return BaseProtocol::start(t) && initAes128() && sendAlarmSubscribe();
+TAwaitVoid AlarmProtocol::start(ITransport* t) {
+    co_await BaseProtocol::start(t);
+    initAes128();
+    co_await sendAlarmSubscribe();
+
+    while(1) {
+        cmdHandler(co_await readCmd());
+    }
 }
 
 void AlarmProtocol::setMotionCallback(const TMotionCallback& c) {
     m_motionCallback = c;
 }
 
-bool AlarmProtocol::initAes128() {
+void AlarmProtocol::initAes128() {
     const std::string key = m_auth.key.substr(0, AES_BLOCK_SIZE);
     m_aesKey = new AES_KEY();
     AES_set_encrypt_key((const unsigned char *) key.data(), AES_BLOCK_SIZE * 8, m_aesKey);
-    debug_print(boost::format("AlarmProtocol::initAes128 %1%, key: %2%") % this % key.c_str());
-    return true;
+    debug_print_this(fmt("key: %1%") % key.c_str());
 }
 
 bool AlarmProtocol::aes128Enc(const TData& in, TData& d, int rounds) {
@@ -97,7 +102,7 @@ uint32_t AlarmProtocol::encChecksum() {
     const uint32_t unknown_base = m_auth.secondU32 - MAGIC_CONST_1;
     uint32_t sum = m_auth.firstU32 + 2 * MAGIC_CONST_2;
 
-    debug_print(boost::format("AlarmProtocol::encChecksum %1%, unknown_base = %2%") % this % unknown_base);
+    debug_print_this(fmt("unknown_base = %1%") % unknown_base);
 
     for (int i = 0, shift = 0; i < 6 ; i++, shift += 5) {
         sum += g_checksumKey[i] & (m_auth.secondU32 >> shift);
@@ -124,7 +129,7 @@ uint32_t AlarmProtocol::encChecksum() {
     return unknown_base + encp;
 }
 
-bool AlarmProtocol::sendAlarmSubscribe() {
+TAwaitVoid AlarmProtocol::sendAlarmSubscribe() {
     TData packet(g_alarmHeader, g_alarmHeader + sizeof(g_alarmHeader));
 
     *((uint32_t*) (packet.data() + 4)) = htonl(encChecksum());
@@ -133,26 +138,25 @@ bool AlarmProtocol::sendAlarmSubscribe() {
     TData d;
 
     if (!aes128Enc({g_alarmEncBody, g_alarmEncBody + sizeof(g_alarmEncBody)}, d))
-        return false;
+        throw std::runtime_error("aes128Enc failed");
 
     packet.insert(packet.end(), d.begin(), d.end());
-    sendCmd(packet, [this]() { readCmd(); });
-    return true;
+    co_await sendCmd(packet);
+    co_return;
 }
 
-bool AlarmProtocol::pingHandler(const TCmdDesc&) {
-    //debug_print(boost::format("AlarmProtocol::pingHandler %1%, %2%") % this % cmd.data.size());
-    return true;
+void AlarmProtocol::pingHandler(const TCmdDesc&) {
+    //debug_print_this(fmt("%1%") % cmd.data.size());
 }
 
-bool AlarmProtocol::alarmHandler(const TCmdDesc& cmd) {
+void AlarmProtocol::alarmHandler(const TCmdDesc& cmd) {
     const uint32_t alarmType = readU32(cmd, 4);
 
     if (alarmType != MOTION_DETECTION_TYPE)
-        return false;
+        throw std::runtime_error("alarmHandler invalid alarm type");
 
     if (cmd.data.size() < (MOTION_DATA_OFFSET + MOTION_DATA_SIZE))
-        return false;
+        throw std::runtime_error("alarmHandler invalid data size");
 
     size_t mdSize = 0;
 
@@ -173,28 +177,19 @@ bool AlarmProtocol::alarmHandler(const TCmdDesc& cmd) {
     if ((mdSize > 0) && m_motionCallback) {
         m_motionCallback(m_motion, mdSize);
     }
-
-    return true;
 }
 
-bool AlarmProtocol::onCmd(const TCmdDesc& cmd) {
-    //debug_print(boost::format("AlarmProtocol::onCmd %1%, %2%") % this % cmd.data.size());
-    bool handlerResult = true;
+void AlarmProtocol::cmdHandler(const TCmdDesc& cmd) {
+    //debug_print_this(fmt("%1%") % cmd.data.size());
 
     switch(cmd.firstU32) {
     case PING_CMD_ID: {
-        handlerResult = pingHandler(cmd);
+        pingHandler(cmd);
         break;
     }
     case ALARM_CMD_ID: {
-        handlerResult = alarmHandler(cmd);
+        alarmHandler(cmd);
         break;
     }
     }
-
-    if (!handlerResult)
-        return false;
-
-    readCmd();
-    return true;
 }

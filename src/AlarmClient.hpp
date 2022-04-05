@@ -3,39 +3,35 @@
 
 #include "Protocol/Alarm.hpp"
 
-#include <boost/asio/io_context.hpp>
-#include <boost/enable_shared_from_this.hpp>
-
-#include <Misc/Timer.hpp>
+#include <Coroutine/CoroutineTask.hpp>
 
 class ServerConfig;
 class ChannelConfig;
-class ClientManager;
+class ProtocolSession;
 
-class AlarmClient : public std::enable_shared_from_this<AlarmClient>, public Timer {
+class AlarmClient : public CoroutineTask<void> {
 public:
     typedef ChannelConfig* TMotion[AlarmConstants::MOTION_MAX_CHANNUM_V30];
 
     AlarmClient(boost::asio::io_context&, const ServerConfig*);
     ~AlarmClient();
 
-    void start();
-    void stop();
-
     const ServerConfig* config() const;
 
     boost::signals2::signal<void(const TMotion&, const size_t&)> onMotion;
 
 private:
-    void runAlarm(const AuthResult& auth);
-    void motionHandler(const AlarmProtocol::TMotion& md, const size_t& size);
-    void restart();
-    std::shared_ptr<ClientManager> createClient();
-    void startImpl();
-    void runAlarmImpl(const AuthResult& auth);
+    typedef std::shared_ptr<ProtocolSession> TProtocolSession;
+    typedef boost::asio::awaitable<TProtocolSession> TProtocolAwait;
+    typedef boost::asio::awaitable<AuthResult> TAuthAwait;
 
-    boost::signals2::signal<void()> m_stopClients;
-    bool m_stopped;
+    TAwaitVoid run() override final;
+
+    void motionHandler(const AlarmProtocol::TMotion& md, const size_t& size);
+    TProtocolAwait getProtocolSession();
+    TAuthAwait authorize();
+    TAwaitVoid runAlarm(const AuthResult& auth);
+
     std::unique_ptr<const ServerConfig> m_config;
     ChannelConfig* m_motionChannels[AlarmConstants::MOTION_MAX_CHANNUM_V30];
 };
