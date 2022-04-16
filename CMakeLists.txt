@@ -15,7 +15,6 @@ file(GLOB_RECURSE PRJ_SRCS src/*.cpp src/*.h src/*.hpp)
 
 target_sources(${PROJECT_NAME} PRIVATE ${PRJ_SRCS})
 target_link_libraries(${PROJECT_NAME} PUBLIC OpenSSL::Crypto boost_base)
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${Boost_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC src/)
 
 #install (TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX})
